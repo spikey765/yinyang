@@ -26,7 +26,7 @@ import sys
 sys.path.append("../../")
 
 from yinyang.src.parsing.Parse import parse_str
-from yinyang.src.parsing.Typechecker import typecheck
+from yinyang.src.parsing.Typechecker import TypeCheckError, typecheck
 from yinyang.src.mutators.GenTypeAwareMutation.GenTypeAwareMutation import (
     GenTypeAwareMutation,
 )
@@ -60,3 +60,22 @@ for i in range(40):
         s = cmd.__str__()
         if "forall" not in s:
             assert "x" not in s.replace("(", " ").replace(")", " ").split(), s
+
+# Same-named variables of different quantifiers may differ in sort, so a
+# subterm using x must not move between the two quantifiers below.
+for i in range(40):
+    random.seed(i)
+    script, glob = parse_str("""\
+(declare-fun a () Int)
+(assert (forall ((x Int)) (> x a)))
+(assert (forall ((x Bool)) (or x (> a 0))))
+(check-sat)""")
+    typecheck(script, glob)
+    gen = GenTypeAwareMutation(script, Mockargs(), get_unique_subterms(script))
+    gen.mutate()
+    mutant, glob = parse_str(script.__str__())
+    try:
+        typecheck(mutant, glob)
+    except TypeCheckError as e:
+        # Other errors come from operators the typechecker does not support
+        assert "faulty subterm:\tx\n" not in e.message, e.message
